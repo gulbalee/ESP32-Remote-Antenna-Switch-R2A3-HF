@@ -1630,7 +1630,7 @@ The ESP32 creates its own access point:
 
 ```text
 SSID:     Antenna-Switch
-Password: 12345678
+Password: 12345678 (please change)
 IP:       192.168.4.1
 ```
 
@@ -1655,6 +1655,8 @@ http://192.168.4.1
 
 const char* AP_SSID = "Antenna-Switch";
 const char* AP_PASSWORD = "12345678";
+
+// Please change password here ^^
 
 WebServer server(80);
 
