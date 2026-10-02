@@ -70,6 +70,8 @@ MAIN POWER SWITCH
     ├──────────────► ESP32 GND
     ├──────────────► buck converter GND
     └──────────────► 10 kΩ ULN input pull-downs
+
+
 ## Antenna selector box
 
 Contains:
