@@ -1659,13 +1659,39 @@ http://192.168.4.1
 #include <WebServer.h>
 
 // ============================================================
-// WIFI
+// ESP32 2-RADIO / 3-ANTENNA RELAY ANTENNA SWITCH
+// ============================================================
+//
+// Radio 1:
+//   K1 = Antenna 1
+//   K3 = Antenna 2
+//   K5 = Antenna 3
+//   K7 = Radio 1 master
+//
+// Radio 2:
+//   K2 = Antenna 1
+//   K4 = Antenna 2
+//   K6 = Antenna 3
+//   K8 = Radio 2 master
+//
+// Relay control:
+//   ESP32 HIGH -> ULN2803 input HIGH
+//   ULN2803 output LOW -> relay coil energized
+//
+// IMPORTANT:
+//   Do NOT change antennas while transmitting.
+//   This controller does not provide PTT/CAT/TX interlock.
 // ============================================================
 
-const char* AP_SSID = "Antenna-Switch";
+
+// ============================================================
+// WIFI ACCESS POINT
+// ============================================================
+
+const char* AP_SSID     = "Antenna-Switch";
 const char* AP_PASSWORD = "12345678";
 
-// Please change password here ^^
+// Change the password above ^^ for actual deployment.
 
 WebServer server(80);
 
@@ -1706,11 +1732,12 @@ const char keyMap[4][3] = {
 
 // ============================================================
 // ANTENNA STATE
+// ============================================================
 //
 // -1 = OFF
-//  0 = A1
-//  1 = A2
-//  2 = A3
+//  0 = Antenna 1
+//  1 = Antenna 2
+//  2 = Antenna 3
 // ============================================================
 
 int radio1Ant = -1;
@@ -1719,8 +1746,16 @@ int radio2Ant = -1;
 
 // ============================================================
 // RELAY CONTROL
-// ULN2803 is active LOW at its output.
-// ESP32 GPIO HIGH turns the ULN channel ON.
+// ============================================================
+//
+// ESP32 GPIO HIGH:
+//     ULN2803 input HIGH
+//     corresponding ULN output LOW
+//     relay coil energized
+//
+// ESP32 GPIO LOW:
+//     ULN2803 output OFF
+//     relay coil de-energized
 // ============================================================
 
 void relayOn(int pin)
@@ -1752,7 +1787,7 @@ void allRelaysOff()
 
 
 // ============================================================
-// TURN OFF ONE RADIO'S MASTER RELAY
+// MASTER RELAYS
 // ============================================================
 
 void radio1MasterOff()
@@ -1767,7 +1802,7 @@ void radio2MasterOff()
 
 
 // ============================================================
-// TURN OFF ONE RADIO'S ANTENNA RELAYS
+// RADIO SELECTOR RELAYS OFF
 // ============================================================
 
 void radio1SelectorsOff()
@@ -1786,7 +1821,7 @@ void radio2SelectorsOff()
 
 
 // ============================================================
-// GET SELECTOR RELAY FOR RADIO 1
+// GET RADIO 1 SELECTOR RELAY
 // ============================================================
 
 int radio1SelectorRelay(int antenna)
@@ -1808,7 +1843,7 @@ int radio1SelectorRelay(int antenna)
 
 
 // ============================================================
-// GET SELECTOR RELAY FOR RADIO 2
+// GET RADIO 2 SELECTOR RELAY
 // ============================================================
 
 int radio2SelectorRelay(int antenna)
@@ -1831,129 +1866,166 @@ int radio2SelectorRelay(int antenna)
 
 // ============================================================
 // RADIO 1 ANTENNA SWITCHING
+// ============================================================
 //
 // Break-before-make:
 //
 // 1. Master OFF
-// 2. Wait
+// 2. Wait 100 ms
 // 3. Old selector OFF
-// 4. Wait
+// 4. Wait 100 ms
 // 5. New selector ON
-// 6. Wait
+// 6. Wait 100 ms
 // 7. Master ON
+//
+// antenna = -1 means OFF.
 // ============================================================
 
-void setRadio1(int antenna)
+bool setRadio1(int antenna)
 {
-    // antenna = -1 means OFF
-
+    // Prevent both radios from using the same antenna.
     if (antenna >= 0 && antenna <= 2)
     {
-        // Prevent both radios from using the same antenna.
         if (radio2Ant == antenna)
         {
-            return;
+            Serial.println("R1 request rejected: antenna already used by R2.");
+            return false;
         }
     }
 
-    // Turn master OFF first
+    // Turn master OFF first.
     radio1MasterOff();
 
     delay(100);
 
-    // Release current antenna
+    // Release all Radio 1 selector relays.
     radio1SelectorsOff();
 
     delay(100);
 
-    // OFF request
+    // OFF request.
     if (antenna == -1)
     {
         radio1Ant = -1;
-        return;
+
+        Serial.println("Radio 1 = OFF");
+
+        return true;
     }
 
-    // Turn new selector ON
+    // Turn the requested selector relay ON.
     int relay = radio1SelectorRelay(antenna);
 
-    if (relay != -1)
+    if (relay == -1)
     {
-        relayOn(relay);
+        return false;
     }
+
+    relayOn(relay);
 
     delay(100);
 
-    // Master ON
+    // Turn Radio 1 master ON.
     relayOn(K7);
 
     radio1Ant = antenna;
+
+    Serial.print("Radio 1 = ");
+    Serial.println(antennaName(antenna));
+
+    return true;
 }
 
 
 // ============================================================
 // RADIO 2 ANTENNA SWITCHING
 // ============================================================
+//
+// Same break-before-make sequence as Radio 1.
+// ============================================================
 
-void setRadio2(int antenna)
+bool setRadio2(int antenna)
 {
-    // antenna = -1 means OFF
-
+    // Prevent both radios from using the same antenna.
     if (antenna >= 0 && antenna <= 2)
     {
-        // Prevent both radios from using the same antenna.
         if (radio1Ant == antenna)
         {
-            return;
+            Serial.println("R2 request rejected: antenna already used by R1.");
+            return false;
         }
     }
 
-    // Turn master OFF first
+    // Turn master OFF first.
     radio2MasterOff();
 
     delay(100);
 
-    // Release current antenna
+    // Release all Radio 2 selector relays.
     radio2SelectorsOff();
 
     delay(100);
 
-    // OFF request
+    // OFF request.
     if (antenna == -1)
     {
         radio2Ant = -1;
-        return;
+
+        Serial.println("Radio 2 = OFF");
+
+        return true;
     }
 
-    // Turn new selector ON
+    // Turn the requested selector relay ON.
     int relay = radio2SelectorRelay(antenna);
 
-    if (relay != -1)
+    if (relay == -1)
     {
-        relayOn(relay);
+        return false;
     }
+
+    relayOn(relay);
 
     delay(100);
 
-    // Master ON
+    // Turn Radio 2 master ON.
     relayOn(K8);
 
     radio2Ant = antenna;
+
+    Serial.print("Radio 2 = ");
+    Serial.println(antennaName(antenna));
+
+    return true;
 }
 
 
 // ============================================================
 // SAFE / ALL OFF
 // ============================================================
+//
+// 1. K7 and K8 OFF
+// 2. Wait 100 ms
+// 3. K1-K6 OFF
+// 4. Wait 100 ms
+// 5. Software states OFF
+//
+// SAFE intentionally disconnects both radios from the antenna
+// network and leaves the antenna grounding network in its
+// normal unselected condition.
+// ============================================================
 
 void safeMode()
 {
-    // Master relays OFF first
+    Serial.println("SAFE / ALL OFF");
+
+    // Master relays OFF first.
     radio1MasterOff();
     radio2MasterOff();
 
     delay(100);
 
-    // Then all selector relays OFF
+    // All selector relays OFF.
     radio1SelectorsOff();
     radio2SelectorsOff();
 
@@ -1984,31 +2056,34 @@ String antennaName(int antenna)
 
 
 // ============================================================
-// KEYPAD SCANNER
+// KEYPAD RAW SCANNER
+// ============================================================
 //
+// Returns the currently detected key.
 // Returns 0 when no key is pressed.
+//
+// This function does NOT perform debounce.
 // ============================================================
 
-char readKeypad()
+char readRawKey()
 {
-    static char lastKey = 0;
-    static unsigned long lastKeyTime = 0;
-
     char detectedKey = 0;
 
+    // Scan each row.
     for (int r = 0; r < 4; r++)
     {
-        // Set all rows HIGH
+        // Set all rows HIGH.
         for (int i = 0; i < 4; i++)
         {
             digitalWrite(rowPins[i], HIGH);
         }
 
-        // Drive current row LOW
+        // Drive current row LOW.
         digitalWrite(rowPins[r], LOW);
 
         delayMicroseconds(50);
 
+        // Read columns.
         for (int c = 0; c < 3; c++)
         {
             if (digitalRead(colPins[c]) == LOW)
@@ -2018,48 +2093,90 @@ char readKeypad()
         }
     }
 
-    // Restore rows HIGH
+    // Restore all rows HIGH.
     for (int i = 0; i < 4; i++)
     {
         digitalWrite(rowPins[i], HIGH);
     }
-
-    if (detectedKey == 0)
-    {
-        lastKey = 0;
-        return 0;
-    }
-
-    // Simple debounce / held-key protection
-    if (detectedKey == lastKey)
-    {
-        if (millis() - lastKeyTime < 400)
-        {
-            return 0;
-        }
-    }
-
-    lastKey = detectedKey;
-    lastKeyTime = millis();
 
     return detectedKey;
 }
 
 
 // ============================================================
-// PROCESS KEYPAD
+// KEYPAD DEBOUNCE
 // ============================================================
+//
+// A key action occurs ONLY once when a key becomes stably
+// pressed.
+//
+// Holding a key does NOT repeatedly trigger the action.
+//
+// The next action is possible only after the key is released.
+// ============================================================
+
+const unsigned long KEY_DEBOUNCE_MS = 50;
+
+char lastRawKey = 0;
+char stableKey = 0;
+unsigned long lastRawChangeTime = 0;
 
 void processKeypad()
 {
-    char key = readKeypad();
+    char rawKey = readRawKey();
 
-    if (key == 0)
+    // Raw key changed.
+    if (rawKey != lastRawKey)
+    {
+        lastRawKey = rawKey;
+        lastRawChangeTime = millis();
+
         return;
+    }
+
+    // Raw key has not been stable long enough.
+    if (millis() - lastRawChangeTime < KEY_DEBOUNCE_MS)
+    {
+        return;
+    }
+
+    // No key pressed.
+    if (rawKey == 0)
+    {
+        // This is the important part:
+        // release resets stableKey, allowing the next
+        // physical press to generate exactly one action.
+        stableKey = 0;
+
+        return;
+    }
+
+    // Key is stable and pressed.
+    // Only act if it was previously released.
+    if (stableKey != rawKey)
+    {
+        stableKey = rawKey;
+
+        handleKeyPress(rawKey);
+    }
+}
+
+
+// ============================================================
+// KEYPAD ACTION
+// ============================================================
+
+void handleKeyPress(char key)
+{
+    Serial.print("Keypad: ");
+    Serial.println(key);
 
     switch (key)
     {
-        // Radio 1
+        // ----------------------------------------------------
+        // RADIO 1
+        // ----------------------------------------------------
+
         case '1':
             setRadio1(0);
             break;
@@ -2073,7 +2190,10 @@ void processKeypad()
             break;
 
 
-        // Radio 2
+        // ----------------------------------------------------
+        // RADIO 2
+        // ----------------------------------------------------
+
         case '4':
             setRadio2(0);
             break;
@@ -2087,13 +2207,19 @@ void processKeypad()
             break;
 
 
+        // ----------------------------------------------------
         // SAFE
+        // ----------------------------------------------------
+
         case '7':
             safeMode();
             break;
 
 
-        // Currently unused
+        // ----------------------------------------------------
+        // UNUSED
+        // ----------------------------------------------------
+
         case '8':
         case '9':
         case '0':
@@ -2106,8 +2232,6 @@ void processKeypad()
 
 // ============================================================
 // HTML BUTTON GENERATOR
-//
-// Selected buttons receive the "selected" CSS class.
 // ============================================================
 
 String antennaButton(
@@ -2147,7 +2271,8 @@ void handleRoot()
     html += "<html>";
     html += "<head>";
 
-    html += "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">";
+    html += "<meta name=\"viewport\" "
+            "content=\"width=device-width,initial-scale=1\">";
 
     html += "<title>Antenna Switch</title>";
 
@@ -2197,7 +2322,6 @@ void handleRoot()
     html += "min-width:120px;";
     html += "}";
 
-    // SELECTED BUTTON
     html += ".ant.selected{";
     html += "background:#00b050;";
     html += "border-color:#00ff66;";
@@ -2226,15 +2350,14 @@ void handleRoot()
     html += "</style>";
 
     html += "</head>";
-
     html += "<body>";
 
     html += "<h1>ESP32 Antenna Switch</h1>";
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // CURRENT STATUS
-    // ========================================================
+    // --------------------------------------------------------
 
     html += "<div class=\"status\">";
 
@@ -2249,9 +2372,9 @@ void handleRoot()
     html += "</div>";
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // RADIO 1
-    // ========================================================
+    // --------------------------------------------------------
 
     html += "<div class=\"radio\">";
 
@@ -2284,9 +2407,9 @@ void handleRoot()
     html += "</div>";
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // RADIO 2
-    // ========================================================
+    // --------------------------------------------------------
 
     html += "<div class=\"radio\">";
 
@@ -2319,17 +2442,19 @@ void handleRoot()
     html += "</div>";
 
 
-    // ========================================================
+    // --------------------------------------------------------
     // SAFE
-    // ========================================================
+    // --------------------------------------------------------
 
     html += "<a href=\"/safe\">";
     html += "<button class=\"safe\">SAFE / ALL OFF</button>";
     html += "</a>";
 
-
     html += "<div class=\"note\">";
     html += "Selected antennas are highlighted in green.";
+    html += "<br>";
+    html += "The displayed state is the commanded software state, "
+            "not electrical verification of relay contacts.";
     html += "</div>";
 
     html += "</body>";
@@ -2345,28 +2470,68 @@ void handleRoot()
 
 void handleR1A1()
 {
-    setRadio1(0);
+    if (!setRadio1(0))
+    {
+        server.send(
+            409,
+            "text/html",
+            "<h2>Radio 1 - Antenna 1 unavailable</h2>"
+            "<p>That antenna is currently assigned to Radio 2.</p>"
+            "<p><a href=\"/\">Back</a></p>"
+        );
+
+        return;
+    }
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
+
 
 void handleR1A2()
 {
-    setRadio1(1);
+    if (!setRadio1(1))
+    {
+        server.send(
+            409,
+            "text/html",
+            "<h2>Radio 1 - Antenna 2 unavailable</h2>"
+            "<p>That antenna is currently assigned to Radio 2.</p>"
+            "<p><a href=\"/\">Back</a></p>"
+        );
+
+        return;
+    }
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
 
+
 void handleR1A3()
 {
-    setRadio1(2);
+    if (!setRadio1(2))
+    {
+        server.send(
+            409,
+            "text/html",
+            "<h2>Radio 1 - Antenna 3 unavailable</h2>"
+            "<p>That antenna is currently assigned to Radio 2.</p>"
+            "<p><a href=\"/\">Back</a></p>"
+        );
+
+        return;
+    }
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
+
 
 void handleR1Off()
 {
     setRadio1(-1);
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
@@ -2374,28 +2539,68 @@ void handleR1Off()
 
 void handleR2A1()
 {
-    setRadio2(0);
+    if (!setRadio2(0))
+    {
+        server.send(
+            409,
+            "text/html",
+            "<h2>Radio 2 - Antenna 1 unavailable</h2>"
+            "<p>That antenna is currently assigned to Radio 1.</p>"
+            "<p><a href=\"/\">Back</a></p>"
+        );
+
+        return;
+    }
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
+
 
 void handleR2A2()
 {
-    setRadio2(1);
+    if (!setRadio2(1))
+    {
+        server.send(
+            409,
+            "text/html",
+            "<h2>Radio 2 - Antenna 2 unavailable</h2>"
+            "<p>That antenna is currently assigned to Radio 1.</p>"
+            "<p><a href=\"/\">Back</a></p>"
+        );
+
+        return;
+    }
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
 
+
 void handleR2A3()
 {
-    setRadio2(2);
+    if (!setRadio2(2))
+    {
+        server.send(
+            409,
+            "text/html",
+            "<h2>Radio 2 - Antenna 3 unavailable</h2>"
+            "<p>That antenna is currently assigned to Radio 1.</p>"
+            "<p><a href=\"/\">Back</a></p>"
+        );
+
+        return;
+    }
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
+
 
 void handleR2Off()
 {
     setRadio2(-1);
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
@@ -2404,6 +2609,7 @@ void handleR2Off()
 void handleSafe()
 {
     safeMode();
+
     server.sendHeader("Location", "/");
     server.send(303);
 }
@@ -2430,11 +2636,12 @@ void setup()
     pinMode(K7, OUTPUT);
     pinMode(K8, OUTPUT);
 
+    // Make sure every relay is OFF.
     allRelaysOff();
 
 
     // --------------------------------------------------------
-    // Keypad
+    // Keypad rows
     // --------------------------------------------------------
 
     for (int i = 0; i < 4; i++)
@@ -2442,6 +2649,11 @@ void setup()
         pinMode(rowPins[i], OUTPUT);
         digitalWrite(rowPins[i], HIGH);
     }
+
+
+    // --------------------------------------------------------
+    // Keypad columns
+    // --------------------------------------------------------
 
     for (int i = 0; i < 3; i++)
     {
@@ -2459,15 +2671,6 @@ void setup()
         AP_SSID,
         AP_PASSWORD
     );
-
-    Serial.println();
-    Serial.println("Antenna Switch");
-    Serial.println("----------------------");
-    Serial.print("SSID: ");
-    Serial.println(AP_SSID);
-
-    Serial.print("IP: ");
-    Serial.println(WiFi.softAPIP());
 
 
     // --------------------------------------------------------
@@ -2490,12 +2693,29 @@ void setup()
 
     server.begin();
 
-    Serial.println("Web server started.");
+
+    // --------------------------------------------------------
+    // Startup information
+    // --------------------------------------------------------
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("ESP32 Antenna Switch");
+    Serial.println("================================");
+
+    Serial.print("SSID: ");
+    Serial.println(AP_SSID);
+
+    Serial.print("IP: ");
+    Serial.println(WiFi.softAPIP());
+
+    Serial.println("System started.");
+    Serial.println("All relays OFF.");
 }
 
 
 // ============================================================
-// LOOP
+// MAIN LOOP
 // ============================================================
 
 void loop()
