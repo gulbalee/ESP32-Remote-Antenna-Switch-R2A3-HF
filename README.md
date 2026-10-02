@@ -2616,3 +2616,18 @@ It does not independently measure the physical relay contacts.
 Therefore, during initial construction/testing, continue using your multimeter and the relay click as the final verification that the physical hardware agrees with the software state.
 
 Once the hardware is confirmed, the browser display gives you a convenient operating-state indication.
+
+
+## License
+
+| Part | License |
+|---|---|
+| Firmware (`firmware/`) | [GPL-3.0-or-later](LICENSE) |
+| This tutorial, wiring and design documentation | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
+| Any schematic / PCB / CAD files added later | [CERN-OHL-S-2.0](https://ohwr.org/cern_ohl_s_v2.txt) |
+
+Copyright (c) 2026 Adam (KD3CSR).
+
+You are free to build, use, modify and share this design. If you distribute a modified version, credit the original, share your changes under the same license, and keep them open for the ham community.
+
+Improvements are welcome via pull request. Sign off your commits (`git commit -s`) to certify you wrote them and agree to the license of the part you changed.
