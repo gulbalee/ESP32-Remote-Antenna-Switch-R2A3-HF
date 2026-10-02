@@ -26,22 +26,50 @@ The design is intended primarily for HF and lower-frequency applications. RF con
 The system is divided into two boxes.
 
 ## Remote control box
-
-Contains:
+The remote control box contains:
 
 - ESP32-WROOM development board
 - ULN2803APG Darlington driver
 - 4×3 membrane keypad
 - 8 × red LEDs
 - 8 × 2.2 kΩ LED resistors
-- 8 x 10 kΩ resistors between uln pin 1 - 8  to DC ground
-- 12 V input
+- 8 × 10 kΩ ULN input pull-down resistors
+- 12 V DC input
 - Main power switch
 - 12 V → 5 V buck converter
 - 100 nF bypass capacitor
 - CAT6 cable to the antenna box
 - One separate +12 V wire to the antenna box
 
+### Power Wiring
+
+The 12 V input enters the remote control box and passes through the main power switch. The switched +12 V is then distributed to the relay driver, LEDs, buck converter, and the separate +12 V feed going to the antenna box.
+
+```text
+12 V INPUT
+    │
+    ▼
+MAIN POWER SWITCH
+    │
+    ├──────────────► +12 V Remote Box
+    │
+    ├──────────────► ULN2803 pin 10 (COM)
+    │
+    ├──────────────► LED resistors
+    │
+    ├──────────────► 12 V → 5 V buck converter
+    │                    │
+    │                    └──► ESP32 5V/VIN
+    │
+    └──────────────► +12 V wire to Antenna Box
+
+
+12 V NEGATIVE
+    │
+    ├──────────────► ULN2803 pin 9 (GND)
+    ├──────────────► ESP32 GND
+    ├──────────────► buck converter GND
+    └──────────────► 10 kΩ ULN input pull-downs
 ## Antenna selector box
 
 Contains:
