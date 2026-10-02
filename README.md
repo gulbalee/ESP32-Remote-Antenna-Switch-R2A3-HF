@@ -1,6 +1,6 @@
 # ESP32 2-Radio / 3-Antenna Relay Antenna Switch R2A3
 
-A DIY antenna selector for **two radios and three antennas**, controlled by an ESP32 designed by AI and KD3CSR.
+A DIY antenna selector for **two radios and three antennas**, controlled by an ESP32.
 
 The system provides:
 
@@ -47,42 +47,78 @@ Switching RF power through relay contacts can damage the relay contacts and/or c
 
 **SAFE / ALL OFF is not a TX-inhibit function.**
 
-SAFE only commands the antenna-switch relays to their OFF state. **Do not transmit while the switch is in SAFE** unless the radio is independently connected to a known suitable load or antenna.
+SAFE only commands the antenna-switch relays to their OFF state.
 
+**Do not transmit while the switch is in SAFE** unless the radio is independently connected to a known suitable load or antenna.
+
+---
 
 ## Table of Contents
 
-1. [Project Overview](#project-overview)
-2. [Features](#features)
-3. [Safety Warning](#safety-warning)
-   - [TX / RF Switching Warning](#tx--rf-switching-warning)
-4. [System Architecture](#system-architecture)
-5. [Remote Control Box](#remote-control-box)
-   - [Components](#components)
-   - [Power Wiring](#power-wiring)
-   - [ULN2803 Wiring](#uln2803-wiring)
-   - [ESP32 Wiring](#esp32-wiring)
-   - [Keypad Wiring](#keypad-wiring)
-   - [LED Wiring](#led-wiring)
-   - [CAT6 Wiring](#cat6-wiring)
-6. [Antenna Box](#antenna-box)
-7. [Relay Wiring](#relay-wiring)
-8. [RF Grounding](#rf-grounding)
-9. [Firmware](#firmware)
-   - [Wi-Fi Access Point](#wi-fi-access-point)
-   - [Web Interface](#web-interface)
-   - [Keypad Operation](#keypad-operation)
-   - [Relay Switching Sequence](#relay-switching-sequence)
-   - [SAFE / ALL OFF](#safe--all-off)
-10. [Testing](#testing)
-11. [Troubleshooting](#troubleshooting)
-12. [License](#license)
+- [System Overview](#system-overview)
+- [Relay Type](#relay-type)
+- [Relay Assignment](#relay-assignment)
+- [RF Wiring — K7](#rf-wiring--k7)
+- [RF Wiring — K8](#rf-wiring--k8)
+- [K1 — Radio 1 / Antenna 1](#k1--radio-1--antenna-1)
+- [K2 — Radio 2 / Antenna 1](#k2--radio-2--antenna-1)
+- [K3 — Radio 1 / Antenna 2](#k3--radio-1--antenna-2)
+- [K4 — Radio 2 / Antenna 2](#k4--radio-2--antenna-2)
+- [K5 — Radio 1 / Antenna 3](#k5--radio-1--antenna-3)
+- [K6 — Radio 2 / Antenna 3](#k6--radio-2--antenna-3)
+- [RF Grounding System](#rf-grounding-system)
+- [What Happens to an Unselected Antenna?](#what-happens-to-an-unselected-antenna)
+- [Selected Antenna](#selected-antenna)
+- [RF Wire Construction](#rf-wire-construction)
+- [Remote Control Box](#remote-control-box)
+- [ESP32 Power](#esp32-power)
+- [ULN2803APG](#uln2803apg)
+- [ESP32 → ULN2803 Relay Control](#esp32--uln2803-relay-control)
+- [Relay Coil Wiring](#relay-coil-wiring)
+- [CAT6 Connection Between Boxes](#cat6-connection-between-boxes)
+- [CAT6 Troubleshooting](#cat6-troubleshooting)
+- [LED Indicators](#led-indicators)
+- [4×3 Keypad](#43-keypad)
+- [Keypad Functions](#keypad-functions)
+- [Front Panel Layout](#front-panel-layout)
+- [Power Filtering](#power-filtering)
+- [Firmware Logic](#firmware-logic)
+- [Break-Before-Make](#break-before-make)
+- [SAFE / ALL OFF](#safe--all-off)
+- [Wi-Fi Control](#wi-fi-control)
+- [TX Safety](#tx-safety)
+- [Initial Power-Up](#initial-power-up)
+- [Test Each Relay Individually](#test-each-relay-individually)
+- [Electrical Relay Test](#electrical-relay-test)
+- [RF Continuity Testing](#rf-continuity-testing)
+- [R1-A1 Selected](#r1-a1-selected)
+- [R1-A2 Selected](#r1-a2-selected)
+- [R1-A3 Selected](#r1-a3-selected)
+- [Radio 2 Testing](#radio-2-testing)
+- [Common Mistakes](#common-mistakes)
+- [Final Wiring Summary](#final-wiring-summary)
+- [Complete Relay/RF Table](#complete-relayrf-table)
+- [Final Conceptual Diagram](#final-conceptual-diagram)
+- [Final Operating Rules](#final-operating-rules)
+- [ESP32 Antenna Switch Firmware](#esp32-antenna-switch-firmware)
+  - [Hardware](#hardware)
+  - [Wi-Fi](#wi-fi)
+  - [Complete Code](#complete-code)
+  - [Browser Interface](#browser-interface)
+  - [Same-Antenna Protection](#same-antenna-protection)
+  - [Physical Keypad](#physical-keypad)
+  - [SAFE](#safe)
+  - [Browser Highlight](#browser-highlight)
+- [License](#license)
 
-# 1. System Overview
+---
+
+# System Overview
 
 The system is divided into two boxes.
 
-## Remote control box
+## Remote Control Box
+
 The remote control box contains:
 
 - ESP32-WROOM development board
@@ -100,7 +136,9 @@ The remote control box contains:
 
 ### Power Wiring
 
-The 12 V input enters the remote control box and passes through the main power switch. The switched +12 V is then distributed to the relay driver, LEDs, buck converter, and the separate +12 V feed going to the antenna box.
+The 12 V input enters the remote control box and passes through the main power switch.
+
+The switched +12 V is distributed to the relay driver, LEDs, buck converter, and the separate +12 V feed going to the antenna box.
 
 ```text
 12 V INPUT
@@ -127,20 +165,31 @@ MAIN POWER SWITCH
     ├──────────────► ESP32 GND
     ├──────────────► buck converter GND
     └──────────────► 10 kΩ ULN input pull-downs
+```
 
+Each ULN input has a 10 kΩ pull-down resistor:
 
+```text
 ESP32 GPIO ─────────► ULN2803 input
                          │
                          │
                        10 kΩ
                          │
                          ▼
-                       GND
+                        GND
+```
 
-```                       
-## Antenna selector box
+There are eight 10 kΩ resistors, one for each ULN2803 input.
 
-Contains:
+The CAT6 cable carries the eight relay-control return lines. It does not carry the relay +12 V supply.
+
+The antenna box receives +12 V through a separate heavier wire.
+
+---
+
+## Antenna Selector Box
+
+The antenna selector box contains:
 
 - 8 × 12 V DPDT relays
 - Radio 1 SO-239
@@ -152,11 +201,13 @@ Contains:
 - CAT6 termination
 - +12 V relay supply bus
 
-The relay box contains no electronics other than the relay coils. Therefore it does **not** require a separate DC ground wire from the remote box.
+The relay box contains no electronics other than the relay coils.
+
+Therefore it does **not** require a separate DC ground wire from the remote box.
 
 ---
 
-# 2. Relay Type
+# Relay Type
 
 The relays used in this build are JQX-18F(T)-2 / LY2-type 12 V DPDT relays.
 
@@ -214,9 +265,7 @@ Always verify relay numbering against the actual relay before soldering a large 
 
 ---
 
-# 3. Relay Assignment
-
-There are eight relays.
+# Relay Assignment
 
 | Relay | Function |
 |---|---|
@@ -232,21 +281,21 @@ There are eight relays.
 The relay arrangement is:
 
 ```text
-                    ┌── K1 ── Antenna 1
+                     ┌── K1 ── Antenna 1
 Radio 1 ── K7 ─ R1 BUS
-                    ├── K3 ── Antenna 2
-                    └── K5 ── Antenna 3
+                     ├── K3 ── Antenna 2
+                     └── K5 ── Antenna 3
 
 
-                    ┌── K2 ── Antenna 1
+                     ┌── K2 ── Antenna 1
 Radio 2 ── K8 ─ R2 BUS
-                    ├── K4 ── Antenna 2
-                    └── K6 ── Antenna 3
+                     ├── K4 ── Antenna 2
+                     └── K6 ── Antenna 3
 ```
 
 ---
 
-# 4. RF Wiring — K7
+# RF Wiring — K7
 
 K7 is the Radio 1 master relay.
 
@@ -258,8 +307,6 @@ K7 pin 3 = R1 BUS
 K7 pin 1 = unused
 K7 pins 2,4,6 = unused
 ```
-
-This is important.
 
 Because pin 5 is COM and pin 3 is NO:
 
@@ -293,7 +340,7 @@ Do not use K7 pin 1 as the R1 BUS connection.
 
 ---
 
-# 5. RF Wiring — K8
+# RF Wiring — K8
 
 K8 is the Radio 2 master relay.
 
@@ -320,7 +367,7 @@ R2 BUS
 
 ---
 
-# 6. K1 — Radio 1 / Antenna 1
+# K1 — Radio 1 / Antenna 1
 
 K1 connections:
 
@@ -333,7 +380,7 @@ K1 pin 2 → K2 pin 6
 K1 pins 1 and 4 → unused
 ```
 
-The signal path when K1 is ON is:
+Signal path when K1 is ON:
 
 ```text
 R1 BUS
@@ -345,7 +392,7 @@ K1 pin 3
 A1 center
 ```
 
-The grounding contact is:
+Grounding connection:
 
 ```text
 A1 shell
@@ -357,7 +404,7 @@ When K1 is OFF, pin 6 connects to pin 2, which continues through K2 to the RF gr
 
 ---
 
-# 7. K2 — Radio 2 / Antenna 1
+# K2 — Radio 2 / Antenna 1
 
 K2:
 
@@ -400,7 +447,7 @@ RF ground
 
 ---
 
-# 8. K3 — Radio 1 / Antenna 2
+# K3 — Radio 1 / Antenna 2
 
 ```text
 K3 pin 5 → R1 BUS
@@ -413,7 +460,7 @@ K3 pins 1 and 4 → unused
 
 ---
 
-# 9. K4 — Radio 2 / Antenna 2
+# K4 — Radio 2 / Antenna 2
 
 ```text
 K4 pin 5 → R2 BUS
@@ -426,7 +473,7 @@ K4 pins 1 and 4 → unused
 
 ---
 
-# 10. K5 — Radio 1 / Antenna 3
+# K5 — Radio 1 / Antenna 3
 
 ```text
 K5 pin 5 → R1 BUS
@@ -439,7 +486,7 @@ K5 pins 1 and 4 → unused
 
 ---
 
-# 11. K6 — Radio 2 / Antenna 3
+# K6 — Radio 2 / Antenna 3
 
 ```text
 K6 pin 5 → R2 BUS
@@ -452,7 +499,7 @@ K6 pins 1 and 4 → unused
 
 ---
 
-# 12. RF Grounding System
+# RF Grounding System
 
 All SO-239 shells should ultimately belong to the common RF ground/chassis system.
 
@@ -488,7 +535,7 @@ These are RF switching contacts.
 
 ---
 
-# 13. What Happens to an Unselected Antenna?
+# What Happens to an Unselected Antenna?
 
 An important feature of this design is that an unselected antenna is grounded.
 
@@ -531,7 +578,7 @@ when those antennas are unselected.
 
 ---
 
-# 14. Selected Antenna
+# Selected Antenna
 
 When R1 selects A1:
 
@@ -566,13 +613,12 @@ Thus:
 
 ```text
 R1 center ↔ A1 center = continuity
-
 A1 center ↔ A1 shell = open
 ```
 
 ---
 
-# 15. RF Wire Construction
+# RF Wire Construction
 
 For short internal RF connections, ordinary copper wire can be used.
 
@@ -603,7 +649,7 @@ For SO-239 shells and the RF ground system, short wide braid or copper strap is 
 
 ---
 
-# 16. Remote Control Box
+# Remote Control Box
 
 The remote box contains:
 
@@ -631,13 +677,13 @@ The remote GND bus connects to:
 ```text
 ULN2803 pin 9
 ESP32 GND
-Buck converter output -
-Keypad GND
+Buck converter input/output ground as applicable
+10 kΩ ULN input pull-downs
 ```
 
 ---
 
-# 17. ESP32 Power
+# ESP32 Power
 
 Use the buck converter to reduce 12 V to approximately 5 V.
 
@@ -663,7 +709,7 @@ The ESP32 GND and ULN pin 9 must share the same electrical ground.
 
 ---
 
-# 18. ULN2803APG
+# ULN2803APG
 
 ULN2803APG pin arrangement:
 
@@ -689,7 +735,7 @@ The COM pin is connected to +12 V for the internal flyback diode arrangement.
 
 ---
 
-# 19. ESP32 → ULN2803 Relay Control
+# ESP32 → ULN2803 Relay Control
 
 The relay GPIO assignment is:
 
@@ -706,7 +752,7 @@ The relay GPIO assignment is:
 
 ---
 
-# 20. Relay Coil Wiring
+# Relay Coil Wiring
 
 Each relay gets +12 V on pin 7.
 
@@ -742,7 +788,7 @@ The ULN turns a relay ON by pulling pin 8 toward ground.
 
 ---
 
-# 21. CAT6 Connection Between Boxes
+# CAT6 Connection Between Boxes
 
 The remote box sends the eight switched relay returns through CAT6.
 
@@ -750,7 +796,9 @@ Only **one +12 V wire** is additionally sent to the antenna box.
 
 There is no separate DC ground wire.
 
-CAT6 assignment used in this build:
+The CAT6 run in this build is approximately 15 m.
+
+CAT6 assignment:
 
 | Relay | CAT6 conductor |
 |---|---|
@@ -807,7 +855,7 @@ Relay coil current returns through the CAT6 wires to the ULN outputs in the remo
 
 ---
 
-# 22. Important CAT6 Troubleshooting Lesson
+# CAT6 Troubleshooting
 
 If the ULN output is correct but the relay does not operate, do not immediately suspect the ESP32.
 
@@ -846,11 +894,11 @@ At the relay:
 K1 pins 7–8 ≈ 12 V when ON
 ```
 
-A measured ~11.6 V across the relay coil is perfectly consistent with a working 12 V supply and wiring.
+A measured ~11.6 V across the relay coil is consistent with a working 12 V supply and wiring.
 
 ---
 
-# 23. LED Indicators
+# LED Indicators
 
 Use eight red 5 mm LEDs.
 
@@ -884,20 +932,13 @@ LED assignments:
 
 The LED cathodes share the corresponding ULN outputs with the relay coils.
 
+The LEDs indicate ULN output / relay-coil drive state. They do not independently verify the physical relay contacts.
+
 ---
 
-# 24. 4×3 Keypad
+# 4×3 Keypad
 
-The seven individual pushbuttons can be replaced with a 4×3 membrane matrix keypad.
-
-A 4×3 keypad has:
-
-```text
-4 rows
-3 columns
-```
-
-Therefore it requires seven ESP32 GPIOs.
+The 4×3 membrane matrix keypad requires seven ESP32 GPIOs.
 
 Use:
 
@@ -911,15 +952,17 @@ Use:
 | Column 2 | GPIO17 |
 | Column 3 | GPIO4 |
 
-This replaces the old individual-button arrangement.
+GPIO5 is unused.
 
-GPIO5 is no longer needed for the physical SAFE button.
+The keypad firmware uses debounce so that:
 
-The ESP32-WROOM board exposes GPIO4, GPIO16 and GPIO17 as usable I/O; GPIO5 is a strapping pin, so GPIO4 is preferable for the seventh keypad line. 
+- A press produces one action.
+- Holding a key does not repeatedly trigger the action.
+- The key must be released before another action from that key is accepted.
 
 ---
 
-# 25. Keypad Functions
+# Keypad Functions
 
 Use the keypad as follows:
 
@@ -945,7 +988,7 @@ The unused keys can be reserved for future functions.
 
 ---
 
-# 26. Front Panel Layout
+# Front Panel Layout
 
 A useful layout is:
 
@@ -977,11 +1020,11 @@ A useful layout is:
        K1 K2 K3 K4 K5 K6 K7 K8
 ```
 
-The LEDs show the actual relay state.
+The LEDs indicate the corresponding ULN/relay-coil drive state.
 
 ---
 
-# 27. Power Filtering
+# Power Filtering
 
 At minimum:
 
@@ -991,13 +1034,11 @@ between +12 V and GND
 near the ULN2803
 ```
 
-An additional large electrolytic capacitor such as 470–1000 µF near the incoming 12 V supply is useful if available.
-
-If only 10 nF and 100 nF capacitors are available, use the 100 nF capacitor. The 10 nF capacitor is not required for the basic relay system.
+An additional large electrolytic capacitor such as 470–1000 µF near the incoming 12 V supply can be useful if available.
 
 ---
 
-# 28. Firmware Logic
+# Firmware Logic
 
 The firmware maintains two independent antenna states:
 
@@ -1031,7 +1072,7 @@ is rejected.
 
 ---
 
-# 29. Break-Before-Make
+# Break-Before-Make
 
 The switching sequence is deliberately:
 
@@ -1045,13 +1086,15 @@ The switching sequence is deliberately:
 7. Master relay ON
 ```
 
-This prevents the system from momentarily connecting two antennas or making an instantaneous hot switch between paths.
+This gives the previous RF path time to disconnect before the new selector relay is energized.
 
-The software should therefore never simply turn the new relay on before releasing the old relay.
+It reduces the possibility of two RF paths being connected during a selection change.
+
+It is not a substitute for the TX warning above.
 
 ---
 
-# 30. SAFE / ALL OFF
+# SAFE / ALL OFF
 
 SAFE performs:
 
@@ -1074,13 +1117,13 @@ Radio 1 = OFF
 Radio 2 = OFF
 ```
 
-This leaves the antenna selector in the safe idle condition.
+This leaves the antenna selector in its normal idle condition.
 
 With the selector relays OFF, the antenna grounding network leaves unused antenna centers connected to RF ground.
 
 ---
 
-# 31. Wi-Fi Control
+# Wi-Fi Control
 
 The ESP32 creates its own Wi-Fi access point.
 
@@ -1090,11 +1133,13 @@ SSID:
 Antenna-Switch
 ```
 
-Password:
+Default password:
 
 ```text
 12345678
 ```
+
+Change the password in the firmware before actual deployment.
 
 Web interface:
 
@@ -1102,7 +1147,13 @@ Web interface:
 192.168.4.1
 ```
 
-Existing routes:
+Open:
+
+```text
+http://192.168.4.1
+```
+
+Available routes:
 
 ```text
 /r1a1
@@ -1122,7 +1173,7 @@ The web interface and physical keypad operate the same relay-control logic.
 
 ---
 
-# 32. Important Safety Interlock
+# TX Safety
 
 The system intentionally does not include a PTT/TX interlock in this version.
 
@@ -1138,7 +1189,7 @@ The break-before-make delay is useful protection against accidental overlap, but
 
 ---
 
-# 33. Initial Power-Up
+# Initial Power-Up
 
 Do not connect the radios initially.
 
@@ -1156,11 +1207,11 @@ ESP32
 
 Verify that the ESP32 starts normally.
 
-Then test the web interface.
+Then test the web interface and physical keypad.
 
 ---
 
-# 34. Test Each Relay Individually
+# Test Each Relay Individually
 
 Test K1 first.
 
@@ -1183,13 +1234,16 @@ Then select:
 R1-A2
 ```
 
-Expected:
+The switching sequence should be:
 
 ```text
+K7 releases
 K1 releases
 K3 clicks
-K7 remains active
+K7 clicks again
 ```
+
+The important point is that K7 is temporarily OFF during the break-before-make sequence.
 
 Then:
 
@@ -1197,12 +1251,13 @@ Then:
 R1-A3
 ```
 
-Expected:
+Expected sequence:
 
 ```text
+K7 releases
 K3 releases
 K5 clicks
-K7 remains active
+K7 clicks again
 ```
 
 Repeat for Radio 2:
@@ -1213,9 +1268,11 @@ R2-A2 → K8 + K4
 R2-A3 → K8 + K6
 ```
 
+Do not connect radios until the RF continuity tests have passed.
+
 ---
 
-# 35. Electrical Relay Test
+# Electrical Relay Test
 
 For a relay that does not click, troubleshoot in this order.
 
@@ -1259,7 +1316,7 @@ If the ULN output is correct but the relay coil reads 0 V, investigate the CAT6 
 
 ---
 
-# 36. RF Continuity Testing
+# RF Continuity Testing
 
 Use a multimeter with the entire system powered OFF.
 
@@ -1289,7 +1346,7 @@ R2 center ↔ A3 center = open
 
 ---
 
-# 37. R1-A1 Selected
+# R1-A1 Selected
 
 Select R1-A1.
 
@@ -1307,7 +1364,7 @@ A2 center ↔ A2 shell = continuity
 A3 center ↔ A3 shell = continuity
 ```
 
-The signal path should be:
+Signal path:
 
 ```text
 R1 center
@@ -1327,7 +1384,7 @@ A1 center
 
 ---
 
-# 38. R1-A2 Selected
+# R1-A2 Selected
 
 Expected:
 
@@ -1355,7 +1412,7 @@ A2 center
 
 ---
 
-# 39. R1-A3 Selected
+# R1-A3 Selected
 
 Expected:
 
@@ -1368,7 +1425,7 @@ A1 and A2 should remain grounded.
 
 ---
 
-# 40. Radio 2 Testing
+# Radio 2 Testing
 
 The same logic applies:
 
@@ -1389,7 +1446,7 @@ The other antenna centers should remain grounded.
 
 ---
 
-# 41. Common Mistakes
+# Common Mistakes
 
 ## K7 pin 1 vs pin 3
 
@@ -1420,7 +1477,7 @@ COM = pin 5
 NO  = pin 3
 ```
 
-The RF signal always uses:
+The RF signal uses:
 
 ```text
 pin 5 → pin 3
@@ -1440,7 +1497,7 @@ For an **unselected antenna**, that connection is intentional in this design.
 
 ---
 
-# 42. Final Wiring Summary
+# Final Wiring Summary
 
 ## Remote box
 
@@ -1492,14 +1549,14 @@ C3 → GPIO4
 CAT6:
 
 ```text
-Orange      → K1 pin 8
-Orange/White→ K2 pin 8
-Green       → K3 pin 8
-Green/White → K4 pin 8
-Blue        → K5 pin 8
-Blue/White  → K6 pin 8
-Brown       → K7 pin 8
-Brown/White → K8 pin 8
+Orange       → K1 pin 8
+Orange/White → K2 pin 8
+Green        → K3 pin 8
+Green/White  → K4 pin 8
+Blue         → K5 pin 8
+Blue/White   → K6 pin 8
+Brown        → K7 pin 8
+Brown/White  → K8 pin 8
 ```
 
 Antenna-box +12 V:
@@ -1517,7 +1574,7 @@ Antenna-box +12 V:
 
 ---
 
-# 43. Complete Relay/RF Table
+# Complete Relay/RF Table
 
 | Relay | Pin 5 COM | Pin 3 NO | Pin 6 | Pin 2 |
 |---|---|---|---|---|
@@ -1539,7 +1596,7 @@ Pin 8 = ULN-controlled return
 
 ---
 
-# 44. Final Conceptual Diagram
+# Final Conceptual Diagram
 
 ```text
                          REMOTE BOX
@@ -1558,10 +1615,11 @@ Pin 8 = ULN-controlled return
                   │         │           │
                   │     ULN2803         │
                   │         │           │
-                  │      CAT6           │
+                  │       CAT6          │
                   └─────────┼───────────┘
                             │
-                     15 m maximum
+                       approximately
+                          15 m
                             │
                   ┌─────────┼───────────┐
                   │    ANTENNA BOX      │
@@ -1582,20 +1640,20 @@ Radio 2 ─────────┤ K8 ── R2 BUS         │
 
 ---
 
-# 45. Final Operating Rules
+# Final Operating Rules
 
 1. Never transmit while changing antennas.
 2. Do not connect a radio until RF continuity tests pass.
 3. Verify every relay's pin numbering before soldering.
 4. Keep RF center conductors short.
 5. Keep RF ground connections short and wide where possible.
-6. Keep the RF signal wiring separated from digital/control wiring.
+6. Keep RF signal wiring separated from digital/control wiring.
 7. Make sure every unselected antenna is grounded.
 8. Make sure a selected antenna center is NOT grounded.
-9. Make sure the selected radio center reaches only the selected antenna.
+9. Make sure the selected radio center reaches the selected antenna.
 10. Test every relay individually before connecting expensive radio equipment.
 
-The final system therefore provides:
+The final system provides:
 
 ```text
         RADIO 1
@@ -1620,8 +1678,9 @@ The final system therefore provides:
      A1  A2  A3
 ```
 
-with **unused antennas automatically grounded**, physical keypad control, Wi-Fi control, relay-state LEDs, and break-before-make switching.
+with **unused antennas automatically grounded**, physical keypad control, Wi-Fi control, relay-drive LEDs, and break-before-make switching.
 
+---
 
 # ESP32 Antenna Switch Firmware
 
@@ -1638,9 +1697,7 @@ This firmware controls:
 - Same-antenna protection
 - Browser indication of the currently selected antenna
 
----
-
-## 1. Hardware
+## Hardware
 
 ### Relay GPIOs
 
@@ -1690,15 +1747,17 @@ Keys 8, 9, *, 0 and # are currently unused.
 
 ---
 
-## 2. Wi-Fi
+## Wi-Fi
 
 The ESP32 creates its own access point:
 
 ```text
 SSID:     Antenna-Switch
-Password: 12345678 (please change)
+Password: 12345678
 IP:       192.168.4.1
 ```
+
+Change the default password in the firmware before actual deployment.
 
 Connect a phone, tablet or computer to the Wi-Fi network and open:
 
@@ -1708,7 +1767,7 @@ http://192.168.4.1
 
 ---
 
-## 3. Complete Code
+## Complete Code
 
 ```cpp
 #include <Arduino.h>
@@ -1748,7 +1807,7 @@ http://192.168.4.1
 const char* AP_SSID     = "Antenna-Switch";
 const char* AP_PASSWORD = "12345678";
 
-// Change the password above ^^ for actual deployment.
+// Change the password above for actual deployment.
 
 WebServer server(80);
 
@@ -1802,17 +1861,21 @@ int radio2Ant = -1;
 
 
 // ============================================================
-// RELAY CONTROL
+// FUNCTION PROTOTYPES
 // ============================================================
-//
-// ESP32 GPIO HIGH:
-//     ULN2803 input HIGH
-//     corresponding ULN output LOW
-//     relay coil energized
-//
-// ESP32 GPIO LOW:
-//     ULN2803 output OFF
-//     relay coil de-energized
+
+String antennaName(int antenna);
+
+void handleKeyPress(char key);
+
+bool setRadio1(int antenna);
+bool setRadio2(int antenna);
+
+void safeMode();
+
+
+// ============================================================
+// RELAY CONTROL
 // ============================================================
 
 void relayOn(int pin)
@@ -1940,17 +2003,19 @@ int radio2SelectorRelay(int antenna)
 
 bool setRadio1(int antenna)
 {
-    // Prevent both radios from using the same antenna.
     if (antenna >= 0 && antenna <= 2)
     {
         if (radio2Ant == antenna)
         {
-            Serial.println("R1 request rejected: antenna already used by R2.");
+            Serial.println(
+                "R1 request rejected: antenna already used by R2."
+            );
+
             return false;
         }
     }
 
-    // Turn master OFF first.
+    // Master OFF first.
     radio1MasterOff();
 
     delay(100);
@@ -1970,7 +2035,7 @@ bool setRadio1(int antenna)
         return true;
     }
 
-    // Turn the requested selector relay ON.
+    // Turn requested selector ON.
     int relay = radio1SelectorRelay(antenna);
 
     if (relay == -1)
@@ -1982,7 +2047,7 @@ bool setRadio1(int antenna)
 
     delay(100);
 
-    // Turn Radio 1 master ON.
+    // Master ON.
     relayOn(K7);
 
     radio1Ant = antenna;
@@ -1997,23 +2062,22 @@ bool setRadio1(int antenna)
 // ============================================================
 // RADIO 2 ANTENNA SWITCHING
 // ============================================================
-//
-// Same break-before-make sequence as Radio 1.
-// ============================================================
 
 bool setRadio2(int antenna)
 {
-    // Prevent both radios from using the same antenna.
     if (antenna >= 0 && antenna <= 2)
     {
         if (radio1Ant == antenna)
         {
-            Serial.println("R2 request rejected: antenna already used by R1.");
+            Serial.println(
+                "R2 request rejected: antenna already used by R1."
+            );
+
             return false;
         }
     }
 
-    // Turn master OFF first.
+    // Master OFF first.
     radio2MasterOff();
 
     delay(100);
@@ -2033,7 +2097,7 @@ bool setRadio2(int antenna)
         return true;
     }
 
-    // Turn the requested selector relay ON.
+    // Turn requested selector ON.
     int relay = radio2SelectorRelay(antenna);
 
     if (relay == -1)
@@ -2045,7 +2109,7 @@ bool setRadio2(int antenna)
 
     delay(100);
 
-    // Turn Radio 2 master ON.
+    // Master ON.
     relayOn(K8);
 
     radio2Ant = antenna;
@@ -2066,23 +2130,17 @@ bool setRadio2(int antenna)
 // 3. K1-K6 OFF
 // 4. Wait 100 ms
 // 5. Software states OFF
-//
-// SAFE intentionally disconnects both radios from the antenna
-// network and leaves the antenna grounding network in its
-// normal unselected condition.
 // ============================================================
 
 void safeMode()
 {
     Serial.println("SAFE / ALL OFF");
 
-    // Master relays OFF first.
     radio1MasterOff();
     radio2MasterOff();
 
     delay(100);
 
-    // All selector relays OFF.
     radio1SelectorsOff();
     radio2SelectorsOff();
 
@@ -2115,32 +2173,22 @@ String antennaName(int antenna)
 // ============================================================
 // KEYPAD RAW SCANNER
 // ============================================================
-//
-// Returns the currently detected key.
-// Returns 0 when no key is pressed.
-//
-// This function does NOT perform debounce.
-// ============================================================
 
 char readRawKey()
 {
     char detectedKey = 0;
 
-    // Scan each row.
     for (int r = 0; r < 4; r++)
     {
-        // Set all rows HIGH.
         for (int i = 0; i < 4; i++)
         {
             digitalWrite(rowPins[i], HIGH);
         }
 
-        // Drive current row LOW.
         digitalWrite(rowPins[r], LOW);
 
         delayMicroseconds(50);
 
-        // Read columns.
         for (int c = 0; c < 3; c++)
         {
             if (digitalRead(colPins[c]) == LOW)
@@ -2150,7 +2198,6 @@ char readRawKey()
         }
     }
 
-    // Restore all rows HIGH.
     for (int i = 0; i < 4; i++)
     {
         digitalWrite(rowPins[i], HIGH);
@@ -2164,25 +2211,25 @@ char readRawKey()
 // KEYPAD DEBOUNCE
 // ============================================================
 //
-// A key action occurs ONLY once when a key becomes stably
-// pressed.
+// A key action occurs only once when a key becomes stable.
 //
 // Holding a key does NOT repeatedly trigger the action.
 //
-// The next action is possible only after the key is released.
+// The key must be released before another action is accepted.
 // ============================================================
 
 const unsigned long KEY_DEBOUNCE_MS = 50;
 
 char lastRawKey = 0;
 char stableKey = 0;
+
 unsigned long lastRawChangeTime = 0;
+
 
 void processKeypad()
 {
     char rawKey = readRawKey();
 
-    // Raw key changed.
     if (rawKey != lastRawKey)
     {
         lastRawKey = rawKey;
@@ -2191,7 +2238,6 @@ void processKeypad()
         return;
     }
 
-    // Raw key has not been stable long enough.
     if (millis() - lastRawChangeTime < KEY_DEBOUNCE_MS)
     {
         return;
@@ -2200,16 +2246,12 @@ void processKeypad()
     // No key pressed.
     if (rawKey == 0)
     {
-        // This is the important part:
-        // release resets stableKey, allowing the next
-        // physical press to generate exactly one action.
         stableKey = 0;
 
         return;
     }
 
-    // Key is stable and pressed.
-    // Only act if it was previously released.
+    // Stable key press.
     if (stableKey != rawKey)
     {
         stableKey = rawKey;
@@ -2230,10 +2272,6 @@ void handleKeyPress(char key)
 
     switch (key)
     {
-        // ----------------------------------------------------
-        // RADIO 1
-        // ----------------------------------------------------
-
         case '1':
             setRadio1(0);
             break;
@@ -2245,11 +2283,6 @@ void handleKeyPress(char key)
         case '3':
             setRadio1(2);
             break;
-
-
-        // ----------------------------------------------------
-        // RADIO 2
-        // ----------------------------------------------------
 
         case '4':
             setRadio2(0);
@@ -2263,19 +2296,9 @@ void handleKeyPress(char key)
             setRadio2(2);
             break;
 
-
-        // ----------------------------------------------------
-        // SAFE
-        // ----------------------------------------------------
-
         case '7':
             safeMode();
             break;
-
-
-        // ----------------------------------------------------
-        // UNUSED
-        // ----------------------------------------------------
 
         case '8':
         case '9':
@@ -2411,11 +2434,7 @@ void handleRoot()
 
     html += "<h1>ESP32 Antenna Switch</h1>";
 
-
-    // --------------------------------------------------------
-    // CURRENT STATUS
-    // --------------------------------------------------------
-
+    // Status
     html += "<div class=\"status\">";
 
     html += "<div><b>Radio 1:</b> ";
@@ -2428,11 +2447,7 @@ void handleRoot()
 
     html += "</div>";
 
-
-    // --------------------------------------------------------
-    // RADIO 1
-    // --------------------------------------------------------
-
+    // Radio 1
     html += "<div class=\"radio\">";
 
     html += "<h2>Radio 1</h2>";
@@ -2463,11 +2478,7 @@ void handleRoot()
 
     html += "</div>";
 
-
-    // --------------------------------------------------------
-    // RADIO 2
-    // --------------------------------------------------------
-
+    // Radio 2
     html += "<div class=\"radio\">";
 
     html += "<h2>Radio 2</h2>";
@@ -2498,11 +2509,7 @@ void handleRoot()
 
     html += "</div>";
 
-
-    // --------------------------------------------------------
     // SAFE
-    // --------------------------------------------------------
-
     html += "<a href=\"/safe\">";
     html += "<button class=\"safe\">SAFE / ALL OFF</button>";
     html += "</a>";
@@ -2680,10 +2687,7 @@ void setup()
 {
     Serial.begin(115200);
 
-    // --------------------------------------------------------
     // Relay GPIOs
-    // --------------------------------------------------------
-
     pinMode(K1, OUTPUT);
     pinMode(K2, OUTPUT);
     pinMode(K3, OUTPUT);
@@ -2696,32 +2700,20 @@ void setup()
     // Make sure every relay is OFF.
     allRelaysOff();
 
-
-    // --------------------------------------------------------
     // Keypad rows
-    // --------------------------------------------------------
-
     for (int i = 0; i < 4; i++)
     {
         pinMode(rowPins[i], OUTPUT);
         digitalWrite(rowPins[i], HIGH);
     }
 
-
-    // --------------------------------------------------------
     // Keypad columns
-    // --------------------------------------------------------
-
     for (int i = 0; i < 3; i++)
     {
         pinMode(colPins[i], INPUT_PULLUP);
     }
 
-
-    // --------------------------------------------------------
     // Wi-Fi Access Point
-    // --------------------------------------------------------
-
     WiFi.mode(WIFI_AP);
 
     WiFi.softAP(
@@ -2729,11 +2721,7 @@ void setup()
         AP_PASSWORD
     );
 
-
-    // --------------------------------------------------------
     // Web routes
-    // --------------------------------------------------------
-
     server.on("/", handleRoot);
 
     server.on("/r1a1", handleR1A1);
@@ -2749,11 +2737,6 @@ void setup()
     server.on("/safe", handleSafe);
 
     server.begin();
-
-
-    // --------------------------------------------------------
-    // Startup information
-    // --------------------------------------------------------
 
     Serial.println();
     Serial.println("================================");
@@ -2785,15 +2768,14 @@ void loop()
 
 ---
 
-# 4. Browser Interface
+## Browser Interface
 
-The selected antenna now gets a **green highlighted button**.
+The selected antenna gets a **green highlighted button**.
 
 For example, if Radio 1 is using Antenna 2:
 
 ```text
 Radio 1: Antenna 2
-
 
 [ Antenna 1 ]   [ ANTENNA 2 ]   [ Antenna 3 ]
                     ↑
@@ -2814,11 +2796,17 @@ Radio 1: Antenna 2
 Radio 2: Antenna 3
 ```
 
-and both selected buttons are highlighted.
+Both selected buttons are highlighted.
+
+The green highlight represents the **ESP32's commanded software state**.
+
+It does not independently measure the physical relay contacts.
+
+During initial construction and testing, continue using the multimeter and relay operation as the final verification that the physical hardware agrees with the software state.
 
 ---
 
-# 5. Same-Antenna Protection
+## Same-Antenna Protection
 
 The firmware prevents this:
 
@@ -2827,13 +2815,15 @@ Radio 1 → A1
 Radio 2 → A1
 ```
 
-If Radio 1 is already using A1 and you attempt to select A1 for Radio 2, the request is ignored.
+If Radio 1 is already using A1 and you attempt to select A1 for Radio 2, the request is rejected.
 
 The existing Radio 1 selection remains unchanged.
 
+The same applies in the opposite direction.
+
 ---
 
-# 6. Physical Keypad
+## Physical Keypad
 
 The physical keypad operates the same functions:
 
@@ -2851,9 +2841,11 @@ The physical keypad operates the same functions:
 
 Keys 8, 9, 0, * and # currently do nothing.
 
+The firmware uses 50 ms debounce and requires the key to be released before another action can be generated from that key.
+
 ---
 
-# 7. SAFE
+## SAFE
 
 The SAFE key:
 
@@ -2882,29 +2874,34 @@ K6
 
 and sets both software antenna states to OFF.
 
+SAFE is not a TX-inhibit function.
+
 ---
 
-# 8. Important Note About the Browser Highlight
+## Browser Highlight
 
 The green highlight represents the **ESP32's commanded state**.
 
 It does not independently measure the physical relay contacts.
 
-Therefore, during initial construction/testing, continue using your multimeter and the relay click as the final verification that the physical hardware agrees with the software state.
+Therefore, during initial construction/testing, continue using your multimeter and relay operation as the final verification that the physical hardware agrees with the software state.
 
-Once the hardware is confirmed, the browser display gives you a convenient operating-state indication.
+Once the hardware is confirmed, the browser display provides a convenient operating-state indication.
 
+---
 
-## License
+# License
 
 | Part | License |
 |---|---|
-| Firmware (`firmware/`) | [GPL-3.0-or-later](LICENSE) |
-| This tutorial, wiring and design documentation | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
-| Any schematic / PCB / CAD files added later | [CERN-OHL-S-2.0](https://ohwr.org/cern_ohl_s_v2.txt) |
+| Firmware | GPL-3.0-or-later |
+| This tutorial, wiring and design documentation | CC BY-SA 4.0 |
+| Any schematic / PCB / CAD files added later | CERN-OHL-S-2.0 |
 
 Copyright (c) 2026 Adam (KD3CSR).
 
-You are free to build, use, modify and share this design. If you distribute a modified version, credit the original, share your changes under the same license, and keep them open for the ham community.
+You are free to build, use, modify and share this design.
 
-Improvements are welcome via pull request. Sign off your commits (`git commit -s`) to certify you wrote them and agree to the license of the part you changed.
+If you distribute a modified version, credit the original, share your changes under the same license, and keep them open for the ham community.
+
+Improvements are welcome via pull request.
