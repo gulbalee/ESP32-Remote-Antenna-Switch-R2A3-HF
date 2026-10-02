@@ -34,6 +34,7 @@ Contains:
 - 4×3 membrane keypad
 - 8 × red LEDs
 - 8 × 2.2 kΩ LED resistors
+- 8 x 10 kΩ resistors between uln pin 1 - 8  to DC ground
 - 12 V input
 - Main power switch
 - 12 V → 5 V buck converter
