@@ -1,7 +1,4 @@
-# ESP32-Remote-Antenna-Switch-R2A3-HF
-Remote antenna switch for 2 radios and 3 antennas
-
-# ESP32 2-Radio / 3-Antenna Relay Antenna Switch
+# ESP32 2-Radio / 3-Antenna Relay Antenna Switch R2A3
 
 A DIY antenna selector for **two radios and three antennas**, controlled by an ESP32.
 
