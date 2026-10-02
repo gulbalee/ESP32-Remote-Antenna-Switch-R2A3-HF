@@ -20,6 +20,18 @@ The system provides:
 The design is intended primarily for HF and lower-frequency applications. RF construction quality, relay suitability, power handling, spacing, enclosure construction and grounding should be appropriate for the frequency and power being used.
 
 ---
+## ⚠️ Disclaimer
+
+This project is a personal hobby design, built for my own station. It worked for me, but that does **not** mean it will work for you or be safe in your setup.
+
+- It is provided **"as is", without warranty of any kind**, express or implied.
+- I accept **no liability** for any damage, injury, equipment failure, data loss, or any other loss resulting from building, using, or modifying this design or its firmware.
+- Radio equipment, RF power, mains and 12 V power supplies, and relay switching can be dangerous and can damage transmitters, antennas and other equipment.
+- Everything here (wiring, relay pin numbering, voltages, RF power handling, firmware behaviour) **must be independently verified by you** before you rely on it. Check every connection with a multimeter and test with no radio connected first.
+- You are responsible for complying with your local amateur radio regulations and electrical safety rules.
+- This is not professional engineering advice. If you are unsure about any part, ask a qualified person.
+
+**You build and use this entirely at your own risk.**
 
 ## ⚠️ TX / RF Switching Warning
 
