@@ -21,6 +21,63 @@ The design is intended primarily for HF and lower-frequency applications. RF con
 
 ---
 
+## ⚠️ TX / RF Switching Warning
+
+> **NEVER change the antenna selection while either radio is transmitting.**
+
+This antenna switch does **not** have a hardware TX interlock, PTT interlock, CAT control, or RF-power detector.
+
+The ESP32 therefore **cannot determine whether either radio is transmitting**.
+
+Before changing the antenna selection:
+
+1. Make sure **Radio 1 is not transmitting**.
+2. Make sure **Radio 2 is not transmitting**.
+3. Change the antenna selection.
+4. Allow the relay switching sequence to complete.
+5. Only then transmit.
+
+The controller uses a **break-before-make** relay switching sequence to reduce the possibility of two RF paths being connected during a selection change. However, this does **not** make the switch safe to operate while RF power is present.
+
+Switching RF power through relay contacts can damage the relay contacts and/or connected radio equipment.
+
+**The operator is responsible for ensuring that no transmitter is active during antenna switching.**
+
+### SAFE / ALL OFF
+
+**SAFE / ALL OFF is not a TX-inhibit function.**
+
+SAFE only commands the antenna-switch relays to their OFF state. **Do not transmit while the switch is in SAFE** unless the radio is independently connected to a known suitable load or antenna.
+
+
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Features](#features)
+3. [Safety Warning](#safety-warning)
+   - [TX / RF Switching Warning](#tx--rf-switching-warning)
+4. [System Architecture](#system-architecture)
+5. [Remote Control Box](#remote-control-box)
+   - [Components](#components)
+   - [Power Wiring](#power-wiring)
+   - [ULN2803 Wiring](#uln2803-wiring)
+   - [ESP32 Wiring](#esp32-wiring)
+   - [Keypad Wiring](#keypad-wiring)
+   - [LED Wiring](#led-wiring)
+   - [CAT6 Wiring](#cat6-wiring)
+6. [Antenna Box](#antenna-box)
+7. [Relay Wiring](#relay-wiring)
+8. [RF Grounding](#rf-grounding)
+9. [Firmware](#firmware)
+   - [Wi-Fi Access Point](#wi-fi-access-point)
+   - [Web Interface](#web-interface)
+   - [Keypad Operation](#keypad-operation)
+   - [Relay Switching Sequence](#relay-switching-sequence)
+   - [SAFE / ALL OFF](#safe--all-off)
+10. [Testing](#testing)
+11. [Troubleshooting](#troubleshooting)
+12. [License](#license)
+
 # 1. System Overview
 
 The system is divided into two boxes.
