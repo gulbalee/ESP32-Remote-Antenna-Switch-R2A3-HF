@@ -1,6 +1,6 @@
 # ESP32 2-Radio / 3-Antenna Relay Antenna Switch R2A3
 
-A DIY antenna selector for **two radios and three antennas**, controlled by an ESP32.
+A DIY antenna selector for **two radios and three antennas**, controlled by an ESP32 designed by AI and KD3CSR.
 
 The system provides:
 
