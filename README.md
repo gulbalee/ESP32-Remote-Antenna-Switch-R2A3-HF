@@ -1525,3 +1525,1053 @@ The final system therefore provides:
 ```
 
 with **unused antennas automatically grounded**, physical keypad control, Wi-Fi control, relay-state LEDs, and break-before-make switching.
+
+
+# ESP32 Antenna Switch Firmware
+
+This firmware controls:
+
+- 8 × relay outputs through ULN2803APG
+- 2 radios
+- 3 antennas
+- 4×3 physical keypad
+- SAFE / ALL OFF
+- Wi-Fi access point
+- Browser control
+- Break-before-make switching
+- Same-antenna protection
+- Browser indication of the currently selected antenna
+
+---
+
+## 1. Hardware
+
+### Relay GPIOs
+
+```text
+K1 = GPIO13
+K2 = GPIO14
+K3 = GPIO18
+K4 = GPIO19
+K5 = GPIO21
+K6 = GPIO22
+K7 = GPIO23
+K8 = GPIO25
+```
+
+### 4×3 Keypad
+
+```text
+Rows:
+
+R1 = GPIO26
+R2 = GPIO27
+R3 = GPIO32
+R4 = GPIO33
+
+Columns:
+
+C1 = GPIO16
+C2 = GPIO17
+C3 = GPIO4
+```
+
+The keypad functions are:
+
+```text
+1 = Radio 1 → Antenna 1
+2 = Radio 1 → Antenna 2
+3 = Radio 1 → Antenna 3
+
+4 = Radio 2 → Antenna 1
+5 = Radio 2 → Antenna 2
+6 = Radio 2 → Antenna 3
+
+7 = SAFE / ALL OFF
+```
+
+Keys 8, 9, *, 0 and # are currently unused.
+
+---
+
+## 2. Wi-Fi
+
+The ESP32 creates its own access point:
+
+```text
+SSID:     Antenna-Switch
+Password: 12345678
+IP:       192.168.4.1
+```
+
+Connect a phone, tablet or computer to the Wi-Fi network and open:
+
+```text
+http://192.168.4.1
+```
+
+---
+
+## 3. Complete Code
+
+```cpp
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
+
+// ============================================================
+// WIFI
+// ============================================================
+
+const char* AP_SSID = "Antenna-Switch";
+const char* AP_PASSWORD = "12345678";
+
+WebServer server(80);
+
+
+// ============================================================
+// RELAY GPIO ASSIGNMENTS
+// ============================================================
+
+const int K1 = 13;
+const int K2 = 14;
+const int K3 = 18;
+const int K4 = 19;
+const int K5 = 21;
+const int K6 = 22;
+const int K7 = 23;
+const int K8 = 25;
+
+
+// ============================================================
+// 4x3 KEYPAD
+// ============================================================
+
+const int rowPins[4] = {
+    26, 27, 32, 33
+};
+
+const int colPins[3] = {
+    16, 17, 4
+};
+
+const char keyMap[4][3] = {
+    { '1', '2', '3' },
+    { '4', '5', '6' },
+    { '7', '8', '9' },
+    { '*', '0', '#' }
+};
+
+
+// ============================================================
+// ANTENNA STATE
+//
+// -1 = OFF
+//  0 = A1
+//  1 = A2
+//  2 = A3
+// ============================================================
+
+int radio1Ant = -1;
+int radio2Ant = -1;
+
+
+// ============================================================
+// RELAY CONTROL
+// ULN2803 is active LOW at its output.
+// ESP32 GPIO HIGH turns the ULN channel ON.
+// ============================================================
+
+void relayOn(int pin)
+{
+    digitalWrite(pin, HIGH);
+}
+
+void relayOff(int pin)
+{
+    digitalWrite(pin, LOW);
+}
+
+
+// ============================================================
+// ALL RELAYS OFF
+// ============================================================
+
+void allRelaysOff()
+{
+    relayOff(K1);
+    relayOff(K2);
+    relayOff(K3);
+    relayOff(K4);
+    relayOff(K5);
+    relayOff(K6);
+    relayOff(K7);
+    relayOff(K8);
+}
+
+
+// ============================================================
+// TURN OFF ONE RADIO'S MASTER RELAY
+// ============================================================
+
+void radio1MasterOff()
+{
+    relayOff(K7);
+}
+
+void radio2MasterOff()
+{
+    relayOff(K8);
+}
+
+
+// ============================================================
+// TURN OFF ONE RADIO'S ANTENNA RELAYS
+// ============================================================
+
+void radio1SelectorsOff()
+{
+    relayOff(K1);
+    relayOff(K3);
+    relayOff(K5);
+}
+
+void radio2SelectorsOff()
+{
+    relayOff(K2);
+    relayOff(K4);
+    relayOff(K6);
+}
+
+
+// ============================================================
+// GET SELECTOR RELAY FOR RADIO 1
+// ============================================================
+
+int radio1SelectorRelay(int antenna)
+{
+    switch (antenna)
+    {
+        case 0:
+            return K1;
+
+        case 1:
+            return K3;
+
+        case 2:
+            return K5;
+    }
+
+    return -1;
+}
+
+
+// ============================================================
+// GET SELECTOR RELAY FOR RADIO 2
+// ============================================================
+
+int radio2SelectorRelay(int antenna)
+{
+    switch (antenna)
+    {
+        case 0:
+            return K2;
+
+        case 1:
+            return K4;
+
+        case 2:
+            return K6;
+    }
+
+    return -1;
+}
+
+
+// ============================================================
+// RADIO 1 ANTENNA SWITCHING
+//
+// Break-before-make:
+//
+// 1. Master OFF
+// 2. Wait
+// 3. Old selector OFF
+// 4. Wait
+// 5. New selector ON
+// 6. Wait
+// 7. Master ON
+// ============================================================
+
+void setRadio1(int antenna)
+{
+    // antenna = -1 means OFF
+
+    if (antenna >= 0 && antenna <= 2)
+    {
+        // Prevent both radios from using the same antenna.
+        if (radio2Ant == antenna)
+        {
+            return;
+        }
+    }
+
+    // Turn master OFF first
+    radio1MasterOff();
+
+    delay(100);
+
+    // Release current antenna
+    radio1SelectorsOff();
+
+    delay(100);
+
+    // OFF request
+    if (antenna == -1)
+    {
+        radio1Ant = -1;
+        return;
+    }
+
+    // Turn new selector ON
+    int relay = radio1SelectorRelay(antenna);
+
+    if (relay != -1)
+    {
+        relayOn(relay);
+    }
+
+    delay(100);
+
+    // Master ON
+    relayOn(K7);
+
+    radio1Ant = antenna;
+}
+
+
+// ============================================================
+// RADIO 2 ANTENNA SWITCHING
+// ============================================================
+
+void setRadio2(int antenna)
+{
+    // antenna = -1 means OFF
+
+    if (antenna >= 0 && antenna <= 2)
+    {
+        // Prevent both radios from using the same antenna.
+        if (radio1Ant == antenna)
+        {
+            return;
+        }
+    }
+
+    // Turn master OFF first
+    radio2MasterOff();
+
+    delay(100);
+
+    // Release current antenna
+    radio2SelectorsOff();
+
+    delay(100);
+
+    // OFF request
+    if (antenna == -1)
+    {
+        radio2Ant = -1;
+        return;
+    }
+
+    // Turn new selector ON
+    int relay = radio2SelectorRelay(antenna);
+
+    if (relay != -1)
+    {
+        relayOn(relay);
+    }
+
+    delay(100);
+
+    // Master ON
+    relayOn(K8);
+
+    radio2Ant = antenna;
+}
+
+
+// ============================================================
+// SAFE / ALL OFF
+// ============================================================
+
+void safeMode()
+{
+    // Master relays OFF first
+    radio1MasterOff();
+    radio2MasterOff();
+
+    delay(100);
+
+    // Then all selector relays OFF
+    radio1SelectorsOff();
+    radio2SelectorsOff();
+
+    delay(100);
+
+    radio1Ant = -1;
+    radio2Ant = -1;
+}
+
+
+// ============================================================
+// ANTENNA NAME
+// ============================================================
+
+String antennaName(int antenna)
+{
+    if (antenna == 0)
+        return "Antenna 1";
+
+    if (antenna == 1)
+        return "Antenna 2";
+
+    if (antenna == 2)
+        return "Antenna 3";
+
+    return "OFF";
+}
+
+
+// ============================================================
+// KEYPAD SCANNER
+//
+// Returns 0 when no key is pressed.
+// ============================================================
+
+char readKeypad()
+{
+    static char lastKey = 0;
+    static unsigned long lastKeyTime = 0;
+
+    char detectedKey = 0;
+
+    for (int r = 0; r < 4; r++)
+    {
+        // Set all rows HIGH
+        for (int i = 0; i < 4; i++)
+        {
+            digitalWrite(rowPins[i], HIGH);
+        }
+
+        // Drive current row LOW
+        digitalWrite(rowPins[r], LOW);
+
+        delayMicroseconds(50);
+
+        for (int c = 0; c < 3; c++)
+        {
+            if (digitalRead(colPins[c]) == LOW)
+            {
+                detectedKey = keyMap[r][c];
+            }
+        }
+    }
+
+    // Restore rows HIGH
+    for (int i = 0; i < 4; i++)
+    {
+        digitalWrite(rowPins[i], HIGH);
+    }
+
+    if (detectedKey == 0)
+    {
+        lastKey = 0;
+        return 0;
+    }
+
+    // Simple debounce / held-key protection
+    if (detectedKey == lastKey)
+    {
+        if (millis() - lastKeyTime < 400)
+        {
+            return 0;
+        }
+    }
+
+    lastKey = detectedKey;
+    lastKeyTime = millis();
+
+    return detectedKey;
+}
+
+
+// ============================================================
+// PROCESS KEYPAD
+// ============================================================
+
+void processKeypad()
+{
+    char key = readKeypad();
+
+    if (key == 0)
+        return;
+
+    switch (key)
+    {
+        // Radio 1
+        case '1':
+            setRadio1(0);
+            break;
+
+        case '2':
+            setRadio1(1);
+            break;
+
+        case '3':
+            setRadio1(2);
+            break;
+
+
+        // Radio 2
+        case '4':
+            setRadio2(0);
+            break;
+
+        case '5':
+            setRadio2(1);
+            break;
+
+        case '6':
+            setRadio2(2);
+            break;
+
+
+        // SAFE
+        case '7':
+            safeMode();
+            break;
+
+
+        // Currently unused
+        case '8':
+        case '9':
+        case '0':
+        case '*':
+        case '#':
+            break;
+    }
+}
+
+
+// ============================================================
+// HTML BUTTON GENERATOR
+//
+// Selected buttons receive the "selected" CSS class.
+// ============================================================
+
+String antennaButton(
+    const String& label,
+    const String& url,
+    bool selected)
+{
+    String html;
+
+    html += "<a href=\"" + url + "\">";
+
+    if (selected)
+    {
+        html += "<button class=\"ant selected\">";
+    }
+    else
+    {
+        html += "<button class=\"ant\">";
+    }
+
+    html += label;
+    html += "</button></a>";
+
+    return html;
+}
+
+
+// ============================================================
+// WEB PAGE
+// ============================================================
+
+void handleRoot()
+{
+    String html;
+
+    html += "<!DOCTYPE html>";
+    html += "<html>";
+    html += "<head>";
+
+    html += "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">";
+
+    html += "<title>Antenna Switch</title>";
+
+    html += "<style>";
+
+    html += "body{";
+    html += "font-family:Arial,sans-serif;";
+    html += "background:#111;";
+    html += "color:white;";
+    html += "text-align:center;";
+    html += "margin:0;";
+    html += "padding:20px;";
+    html += "}";
+
+    html += "h1{";
+    html += "margin-bottom:10px;";
+    html += "}";
+
+    html += ".status{";
+    html += "font-size:20px;";
+    html += "margin:10px auto 25px;";
+    html += "padding:15px;";
+    html += "background:#222;";
+    html += "border-radius:10px;";
+    html += "max-width:500px;";
+    html += "}";
+
+    html += ".radio{";
+    html += "margin:20px auto;";
+    html += "max-width:500px;";
+    html += "}";
+
+    html += ".radio h2{";
+    html += "margin-bottom:10px;";
+    html += "}";
+
+    html += ".ant{";
+    html += "font-size:20px;";
+    html += "font-weight:bold;";
+    html += "padding:20px 25px;";
+    html += "margin:5px;";
+    html += "border:2px solid #555;";
+    html += "border-radius:10px;";
+    html += "background:#333;";
+    html += "color:white;";
+    html += "cursor:pointer;";
+    html += "min-width:120px;";
+    html += "}";
+
+    // SELECTED BUTTON
+    html += ".ant.selected{";
+    html += "background:#00b050;";
+    html += "border-color:#00ff66;";
+    html += "color:white;";
+    html += "box-shadow:0 0 15px #00ff66;";
+    html += "}";
+
+    html += ".safe{";
+    html += "font-size:20px;";
+    html += "font-weight:bold;";
+    html += "padding:18px 45px;";
+    html += "margin-top:25px;";
+    html += "border:none;";
+    html += "border-radius:10px;";
+    html += "background:#b00000;";
+    html += "color:white;";
+    html += "cursor:pointer;";
+    html += "}";
+
+    html += ".note{";
+    html += "font-size:14px;";
+    html += "color:#aaa;";
+    html += "margin-top:25px;";
+    html += "}";
+
+    html += "</style>";
+
+    html += "</head>";
+
+    html += "<body>";
+
+    html += "<h1>ESP32 Antenna Switch</h1>";
+
+
+    // ========================================================
+    // CURRENT STATUS
+    // ========================================================
+
+    html += "<div class=\"status\">";
+
+    html += "<div><b>Radio 1:</b> ";
+    html += antennaName(radio1Ant);
+    html += "</div>";
+
+    html += "<div><b>Radio 2:</b> ";
+    html += antennaName(radio2Ant);
+    html += "</div>";
+
+    html += "</div>";
+
+
+    // ========================================================
+    // RADIO 1
+    // ========================================================
+
+    html += "<div class=\"radio\">";
+
+    html += "<h2>Radio 1</h2>";
+
+    html += antennaButton(
+        "Antenna 1",
+        "/r1a1",
+        radio1Ant == 0
+    );
+
+    html += antennaButton(
+        "Antenna 2",
+        "/r1a2",
+        radio1Ant == 1
+    );
+
+    html += antennaButton(
+        "Antenna 3",
+        "/r1a3",
+        radio1Ant == 2
+    );
+
+    html += "<br>";
+
+    html += "<a href=\"/r1off\">";
+    html += "<button class=\"ant\">OFF</button>";
+    html += "</a>";
+
+    html += "</div>";
+
+
+    // ========================================================
+    // RADIO 2
+    // ========================================================
+
+    html += "<div class=\"radio\">";
+
+    html += "<h2>Radio 2</h2>";
+
+    html += antennaButton(
+        "Antenna 1",
+        "/r2a1",
+        radio2Ant == 0
+    );
+
+    html += antennaButton(
+        "Antenna 2",
+        "/r2a2",
+        radio2Ant == 1
+    );
+
+    html += antennaButton(
+        "Antenna 3",
+        "/r2a3",
+        radio2Ant == 2
+    );
+
+    html += "<br>";
+
+    html += "<a href=\"/r2off\">";
+    html += "<button class=\"ant\">OFF</button>";
+    html += "</a>";
+
+    html += "</div>";
+
+
+    // ========================================================
+    // SAFE
+    // ========================================================
+
+    html += "<a href=\"/safe\">";
+    html += "<button class=\"safe\">SAFE / ALL OFF</button>";
+    html += "</a>";
+
+
+    html += "<div class=\"note\">";
+    html += "Selected antennas are highlighted in green.";
+    html += "</div>";
+
+    html += "</body>";
+    html += "</html>";
+
+    server.send(200, "text/html", html);
+}
+
+
+// ============================================================
+// WEB ROUTES
+// ============================================================
+
+void handleR1A1()
+{
+    setRadio1(0);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleR1A2()
+{
+    setRadio1(1);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleR1A3()
+{
+    setRadio1(2);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleR1Off()
+{
+    setRadio1(-1);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+
+void handleR2A1()
+{
+    setRadio2(0);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleR2A2()
+{
+    setRadio2(1);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleR2A3()
+{
+    setRadio2(2);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+void handleR2Off()
+{
+    setRadio2(-1);
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+
+void handleSafe()
+{
+    safeMode();
+    server.sendHeader("Location", "/");
+    server.send(303);
+}
+
+
+// ============================================================
+// SETUP
+// ============================================================
+
+void setup()
+{
+    Serial.begin(115200);
+
+    // --------------------------------------------------------
+    // Relay GPIOs
+    // --------------------------------------------------------
+
+    pinMode(K1, OUTPUT);
+    pinMode(K2, OUTPUT);
+    pinMode(K3, OUTPUT);
+    pinMode(K4, OUTPUT);
+    pinMode(K5, OUTPUT);
+    pinMode(K6, OUTPUT);
+    pinMode(K7, OUTPUT);
+    pinMode(K8, OUTPUT);
+
+    allRelaysOff();
+
+
+    // --------------------------------------------------------
+    // Keypad
+    // --------------------------------------------------------
+
+    for (int i = 0; i < 4; i++)
+    {
+        pinMode(rowPins[i], OUTPUT);
+        digitalWrite(rowPins[i], HIGH);
+    }
+
+    for (int i = 0; i < 3; i++)
+    {
+        pinMode(colPins[i], INPUT_PULLUP);
+    }
+
+
+    // --------------------------------------------------------
+    // Wi-Fi Access Point
+    // --------------------------------------------------------
+
+    WiFi.mode(WIFI_AP);
+
+    WiFi.softAP(
+        AP_SSID,
+        AP_PASSWORD
+    );
+
+    Serial.println();
+    Serial.println("Antenna Switch");
+    Serial.println("----------------------");
+    Serial.print("SSID: ");
+    Serial.println(AP_SSID);
+
+    Serial.print("IP: ");
+    Serial.println(WiFi.softAPIP());
+
+
+    // --------------------------------------------------------
+    // Web routes
+    // --------------------------------------------------------
+
+    server.on("/", handleRoot);
+
+    server.on("/r1a1", handleR1A1);
+    server.on("/r1a2", handleR1A2);
+    server.on("/r1a3", handleR1A3);
+    server.on("/r1off", handleR1Off);
+
+    server.on("/r2a1", handleR2A1);
+    server.on("/r2a2", handleR2A2);
+    server.on("/r2a3", handleR2A3);
+    server.on("/r2off", handleR2Off);
+
+    server.on("/safe", handleSafe);
+
+    server.begin();
+
+    Serial.println("Web server started.");
+}
+
+
+// ============================================================
+// LOOP
+// ============================================================
+
+void loop()
+{
+    server.handleClient();
+
+    processKeypad();
+}
+```
+
+---
+
+# 4. Browser Interface
+
+The selected antenna now gets a **green highlighted button**.
+
+For example, if Radio 1 is using Antenna 2:
+
+```text
+Radio 1: Antenna 2
+
+
+[ Antenna 1 ]   [ ANTENNA 2 ]   [ Antenna 3 ]
+                    ↑
+                  GREEN
+```
+
+The status at the top also says:
+
+```text
+Radio 1: Antenna 2
+Radio 2: OFF
+```
+
+If Radio 2 is subsequently switched to Antenna 3:
+
+```text
+Radio 1: Antenna 2
+Radio 2: Antenna 3
+```
+
+and both selected buttons are highlighted.
+
+---
+
+# 5. Same-Antenna Protection
+
+The firmware prevents this:
+
+```text
+Radio 1 → A1
+Radio 2 → A1
+```
+
+If Radio 1 is already using A1 and you attempt to select A1 for Radio 2, the request is ignored.
+
+The existing Radio 1 selection remains unchanged.
+
+---
+
+# 6. Physical Keypad
+
+The physical keypad operates the same functions:
+
+```text
+1 → R1 A1
+2 → R1 A2
+3 → R1 A3
+
+4 → R2 A1
+5 → R2 A2
+6 → R2 A3
+
+7 → SAFE
+```
+
+Keys 8, 9, 0, * and # currently do nothing.
+
+---
+
+# 7. SAFE
+
+The SAFE key:
+
+```text
+7
+```
+
+or the browser:
+
+```text
+SAFE / ALL OFF
+```
+
+turns off:
+
+```text
+K7
+K8
+K1
+K2
+K3
+K4
+K5
+K6
+```
+
+and sets both software antenna states to OFF.
+
+---
+
+# 8. Important Note About the Browser Highlight
+
+The green highlight represents the **ESP32's commanded state**.
+
+It does not independently measure the physical relay contacts.
+
+Therefore, during initial construction/testing, continue using your multimeter and the relay click as the final verification that the physical hardware agrees with the software state.
+
+Once the hardware is confirmed, the browser display gives you a convenient operating-state indication.
