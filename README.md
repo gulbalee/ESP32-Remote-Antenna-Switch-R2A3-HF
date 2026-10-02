@@ -72,7 +72,7 @@ MAIN POWER SWITCH
     └──────────────► 10 kΩ ULN input pull-downs
 ```
 
-### Antenna selector box
+## Antenna selector box
 
 Contains:
 
