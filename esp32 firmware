@@ -1,4 +1,3 @@
-```cpp
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
@@ -90,17 +89,21 @@ int radio2Ant = -1;
 
 
 // ============================================================
-// RELAY CONTROL
+// FUNCTION PROTOTYPES
 // ============================================================
-//
-// ESP32 GPIO HIGH:
-//     ULN2803 input HIGH
-//     corresponding ULN output LOW
-//     relay coil energized
-//
-// ESP32 GPIO LOW:
-//     ULN2803 output OFF
-//     relay coil de-energized
+
+String antennaName(int antenna);
+
+void handleKeyPress(char key);
+
+bool setRadio1(int antenna);
+bool setRadio2(int antenna);
+
+void safeMode();
+
+
+// ============================================================
+// RELAY CONTROL
 // ============================================================
 
 void relayOn(int pin)
@@ -228,17 +231,19 @@ int radio2SelectorRelay(int antenna)
 
 bool setRadio1(int antenna)
 {
-    // Prevent both radios from using the same antenna.
     if (antenna >= 0 && antenna <= 2)
     {
         if (radio2Ant == antenna)
         {
-            Serial.println("R1 request rejected: antenna already used by R2.");
+            Serial.println(
+                "R1 request rejected: antenna already used by R2."
+            );
+
             return false;
         }
     }
 
-    // Turn master OFF first.
+    // Master OFF first.
     radio1MasterOff();
 
     delay(100);
@@ -258,7 +263,7 @@ bool setRadio1(int antenna)
         return true;
     }
 
-    // Turn the requested selector relay ON.
+    // Turn requested selector ON.
     int relay = radio1SelectorRelay(antenna);
 
     if (relay == -1)
@@ -270,7 +275,7 @@ bool setRadio1(int antenna)
 
     delay(100);
 
-    // Turn Radio 1 master ON.
+    // Master ON.
     relayOn(K7);
 
     radio1Ant = antenna;
@@ -285,23 +290,22 @@ bool setRadio1(int antenna)
 // ============================================================
 // RADIO 2 ANTENNA SWITCHING
 // ============================================================
-//
-// Same break-before-make sequence as Radio 1.
-// ============================================================
 
 bool setRadio2(int antenna)
 {
-    // Prevent both radios from using the same antenna.
     if (antenna >= 0 && antenna <= 2)
     {
         if (radio1Ant == antenna)
         {
-            Serial.println("R2 request rejected: antenna already used by R1.");
+            Serial.println(
+                "R2 request rejected: antenna already used by R1."
+            );
+
             return false;
         }
     }
 
-    // Turn master OFF first.
+    // Master OFF first.
     radio2MasterOff();
 
     delay(100);
@@ -321,7 +325,7 @@ bool setRadio2(int antenna)
         return true;
     }
 
-    // Turn the requested selector relay ON.
+    // Turn requested selector ON.
     int relay = radio2SelectorRelay(antenna);
 
     if (relay == -1)
@@ -333,7 +337,7 @@ bool setRadio2(int antenna)
 
     delay(100);
 
-    // Turn Radio 2 master ON.
+    // Master ON.
     relayOn(K8);
 
     radio2Ant = antenna;
@@ -354,23 +358,17 @@ bool setRadio2(int antenna)
 // 3. K1-K6 OFF
 // 4. Wait 100 ms
 // 5. Software states OFF
-//
-// SAFE intentionally disconnects both radios from the antenna
-// network and leaves the antenna grounding network in its
-// normal unselected condition.
 // ============================================================
 
 void safeMode()
 {
     Serial.println("SAFE / ALL OFF");
 
-    // Master relays OFF first.
     radio1MasterOff();
     radio2MasterOff();
 
     delay(100);
 
-    // All selector relays OFF.
     radio1SelectorsOff();
     radio2SelectorsOff();
 
@@ -403,32 +401,22 @@ String antennaName(int antenna)
 // ============================================================
 // KEYPAD RAW SCANNER
 // ============================================================
-//
-// Returns the currently detected key.
-// Returns 0 when no key is pressed.
-//
-// This function does NOT perform debounce.
-// ============================================================
 
 char readRawKey()
 {
     char detectedKey = 0;
 
-    // Scan each row.
     for (int r = 0; r < 4; r++)
     {
-        // Set all rows HIGH.
         for (int i = 0; i < 4; i++)
         {
             digitalWrite(rowPins[i], HIGH);
         }
 
-        // Drive current row LOW.
         digitalWrite(rowPins[r], LOW);
 
         delayMicroseconds(50);
 
-        // Read columns.
         for (int c = 0; c < 3; c++)
         {
             if (digitalRead(colPins[c]) == LOW)
@@ -438,7 +426,6 @@ char readRawKey()
         }
     }
 
-    // Restore all rows HIGH.
     for (int i = 0; i < 4; i++)
     {
         digitalWrite(rowPins[i], HIGH);
@@ -452,25 +439,25 @@ char readRawKey()
 // KEYPAD DEBOUNCE
 // ============================================================
 //
-// A key action occurs ONLY once when a key becomes stably
-// pressed.
+// A key action occurs only once when a key becomes stable.
 //
 // Holding a key does NOT repeatedly trigger the action.
 //
-// The next action is possible only after the key is released.
+// The key must be released before another action is accepted.
 // ============================================================
 
 const unsigned long KEY_DEBOUNCE_MS = 50;
 
 char lastRawKey = 0;
 char stableKey = 0;
+
 unsigned long lastRawChangeTime = 0;
+
 
 void processKeypad()
 {
     char rawKey = readRawKey();
 
-    // Raw key changed.
     if (rawKey != lastRawKey)
     {
         lastRawKey = rawKey;
@@ -479,7 +466,6 @@ void processKeypad()
         return;
     }
 
-    // Raw key has not been stable long enough.
     if (millis() - lastRawChangeTime < KEY_DEBOUNCE_MS)
     {
         return;
@@ -488,16 +474,12 @@ void processKeypad()
     // No key pressed.
     if (rawKey == 0)
     {
-        // This is the important part:
-        // release resets stableKey, allowing the next
-        // physical press to generate exactly one action.
         stableKey = 0;
 
         return;
     }
 
-    // Key is stable and pressed.
-    // Only act if it was previously released.
+    // Stable key press.
     if (stableKey != rawKey)
     {
         stableKey = rawKey;
@@ -518,10 +500,6 @@ void handleKeyPress(char key)
 
     switch (key)
     {
-        // ----------------------------------------------------
-        // RADIO 1
-        // ----------------------------------------------------
-
         case '1':
             setRadio1(0);
             break;
@@ -533,11 +511,6 @@ void handleKeyPress(char key)
         case '3':
             setRadio1(2);
             break;
-
-
-        // ----------------------------------------------------
-        // RADIO 2
-        // ----------------------------------------------------
 
         case '4':
             setRadio2(0);
@@ -551,19 +524,9 @@ void handleKeyPress(char key)
             setRadio2(2);
             break;
 
-
-        // ----------------------------------------------------
-        // SAFE
-        // ----------------------------------------------------
-
         case '7':
             safeMode();
             break;
-
-
-        // ----------------------------------------------------
-        // UNUSED
-        // ----------------------------------------------------
 
         case '8':
         case '9':
@@ -699,11 +662,7 @@ void handleRoot()
 
     html += "<h1>ESP32 Antenna Switch</h1>";
 
-
-    // --------------------------------------------------------
-    // CURRENT STATUS
-    // --------------------------------------------------------
-
+    // Status
     html += "<div class=\"status\">";
 
     html += "<div><b>Radio 1:</b> ";
@@ -716,11 +675,7 @@ void handleRoot()
 
     html += "</div>";
 
-
-    // --------------------------------------------------------
-    // RADIO 1
-    // --------------------------------------------------------
-
+    // Radio 1
     html += "<div class=\"radio\">";
 
     html += "<h2>Radio 1</h2>";
@@ -751,11 +706,7 @@ void handleRoot()
 
     html += "</div>";
 
-
-    // --------------------------------------------------------
-    // RADIO 2
-    // --------------------------------------------------------
-
+    // Radio 2
     html += "<div class=\"radio\">";
 
     html += "<h2>Radio 2</h2>";
@@ -786,11 +737,7 @@ void handleRoot()
 
     html += "</div>";
 
-
-    // --------------------------------------------------------
     // SAFE
-    // --------------------------------------------------------
-
     html += "<a href=\"/safe\">";
     html += "<button class=\"safe\">SAFE / ALL OFF</button>";
     html += "</a>";
@@ -968,10 +915,7 @@ void setup()
 {
     Serial.begin(115200);
 
-    // --------------------------------------------------------
     // Relay GPIOs
-    // --------------------------------------------------------
-
     pinMode(K1, OUTPUT);
     pinMode(K2, OUTPUT);
     pinMode(K3, OUTPUT);
@@ -984,32 +928,20 @@ void setup()
     // Make sure every relay is OFF.
     allRelaysOff();
 
-
-    // --------------------------------------------------------
     // Keypad rows
-    // --------------------------------------------------------
-
     for (int i = 0; i < 4; i++)
     {
         pinMode(rowPins[i], OUTPUT);
         digitalWrite(rowPins[i], HIGH);
     }
 
-
-    // --------------------------------------------------------
     // Keypad columns
-    // --------------------------------------------------------
-
     for (int i = 0; i < 3; i++)
     {
         pinMode(colPins[i], INPUT_PULLUP);
     }
 
-
-    // --------------------------------------------------------
     // Wi-Fi Access Point
-    // --------------------------------------------------------
-
     WiFi.mode(WIFI_AP);
 
     WiFi.softAP(
@@ -1017,11 +949,7 @@ void setup()
         AP_PASSWORD
     );
 
-
-    // --------------------------------------------------------
     // Web routes
-    // --------------------------------------------------------
-
     server.on("/", handleRoot);
 
     server.on("/r1a1", handleR1A1);
@@ -1037,11 +965,6 @@ void setup()
     server.on("/safe", handleSafe);
 
     server.begin();
-
-
-    // --------------------------------------------------------
-    // Startup information
-    // --------------------------------------------------------
 
     Serial.println();
     Serial.println("================================");
@@ -1069,4 +992,3 @@ void loop()
 
     processKeypad();
 }
-```
